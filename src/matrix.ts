@@ -39,10 +39,52 @@ document.addEventListener('DOMContentLoaded', function () {
         ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
     }
 
-    let columns = Math.floor(window.innerWidth / fontSize);
-    let drops: number[] = [];
+    interface Glyph {
+        char: string;
+        row: number;
+    }
+
+    interface Stream {
+        nextRow: number;
+        glyphs: Glyph[];
+    }
+
+    // A translucent black wash never hits zero in 8-bit, so old glyphs stayed
+    // as a green field. Draw each streak from scratch and let its tail alpha
+    // land on zero instead.
+    const trailLength = 28;
+    const glyphStyles: string[] = [];
+    const trailLast = trailLength - 1;
+    for (let age = 0; age < trailLength; age++) {
+        const opacity = Math.pow(1 - age / trailLast, 2.15);
+        if (opacity < 0.02) {
+            glyphStyles.push('');
+            continue;
+        }
+        const hot = Math.max(0, 1 - age / 3);
+        const red = Math.round(190 * hot);
+        const blue = Math.round(100 + 110 * hot);
+        glyphStyles.push(`rgba(${red}, 255, ${blue}, ${opacity.toFixed(3)})`);
+    }
+
+    function makeStream(): Stream {
+        return { nextRow: Math.random() * -100, glyphs: [] };
+    }
+
+    let streams: Stream[] = [];
     let lockedHeight = getInitialViewportHeight();
     let lockedWidth = window.innerWidth;
+
+    function ensureStreams(count: number): void {
+        if (count === streams.length) {
+            return;
+        }
+        const next: Stream[] = [];
+        for (let x = 0; x < count; x++) {
+            next.push(x < streams.length ? streams[x] : makeStream());
+        }
+        streams = next;
+    }
 
     function resizeCanvas(): void {
         const newWidth = window.innerWidth;
@@ -54,27 +96,15 @@ document.addEventListener('DOMContentLoaded', function () {
 
         // Only resize on significant changes (ignore address bar show/hide)
         if (widthDiff > 50 || heightDiff > 200) {
-            const oldColumns = columns;
             lockedWidth = newWidth;
             lockedHeight = newHeight;
             applyCanvasSize(lockedWidth, lockedHeight);
-            columns = newColumns;
-
-            if (newColumns !== oldColumns) {
-                const newDrops: number[] = [];
-                for (let x = 0; x < newColumns; x++) {
-                    newDrops[x] = x < oldColumns ? drops[x] : Math.random() * -100;
-                }
-                drops = newDrops;
-            }
+            ensureStreams(newColumns);
         }
     }
 
     applyCanvasSize(lockedWidth, lockedHeight);
-
-    for (let x = 0; x < columns; x++) {
-        drops[x] = Math.random() * -100;
-    }
+    ensureStreams(Math.floor(lockedWidth / fontSize));
 
     let resizeTimeout: ReturnType<typeof setTimeout>;
 
@@ -103,24 +133,38 @@ document.addEventListener('DOMContentLoaded', function () {
         }
         lastTime = currentTime;
 
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.03)';
-        ctx.fillRect(0, 0, lockedWidth, lockedHeight);
-
+        ctx.clearRect(0, 0, lockedWidth, lockedHeight);
         ctx.font = 'bold ' + fontSize + 'px monospace';
 
-        for (let i = 0; i < drops.length; i++) {
-            const text = chars[Math.floor(Math.random() * chars.length)];
-            const x = i * fontSize;
-            const y = drops[i] * fontSize;
-
-            const opacity = Math.max(0.3, 1 - (y / lockedHeight) * 0.4);
-            ctx.fillStyle = `rgba(0, 255, 100, ${opacity})`;
-            ctx.fillText(text, x, y);
-
-            if (y > lockedHeight && Math.random() > 0.975) {
-                drops[i] = 0;
+        for (let i = 0; i < streams.length; i++) {
+            const stream = streams[i];
+            if (stream.nextRow >= 0) {
+                stream.glyphs.push({
+                    char: chars[Math.floor(Math.random() * chars.length)],
+                    row: stream.nextRow,
+                });
+                if (stream.glyphs.length > trailLength) {
+                    stream.glyphs.shift();
+                }
             }
-            drops[i]++;
+
+            const y = stream.nextRow * fontSize;
+            stream.nextRow++;
+            if (y > lockedHeight && Math.random() > 0.975) {
+                stream.nextRow = 0;
+            }
+
+            const glyphs = stream.glyphs;
+            const newest = glyphs.length - 1;
+            const x = i * fontSize;
+            for (let g = 0; g < glyphs.length; g++) {
+                const style = glyphStyles[newest - g];
+                if (!style) {
+                    continue;
+                }
+                ctx.fillStyle = style;
+                ctx.fillText(glyphs[g].char, x, glyphs[g].row * fontSize);
+            }
         }
 
         frameHandle = requestAnimationFrame(draw);
