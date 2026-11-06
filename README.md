@@ -1,4 +1,4 @@
-# euxaristia.github.io
+# euxarist.github.io
 
 my little corner of the internet
 
