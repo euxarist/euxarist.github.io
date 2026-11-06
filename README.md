@@ -35,6 +35,6 @@ The compiled output lives alongside the pages. HTML/CSS edits do not require rec
 
 - plain HTML and CSS for the homepage
 - TypeScript compiled to JavaScript for the Matrix rain and map
-- Google Fonts: Syne and IBM Plex Mono, with local font fallbacks
+- Google Fonts: Doto and Sometype Mono, with local font fallbacks
 - [OpenLayers](https://openlayers.org) for the map
 - [uNmINeD](https://github.com/UnminedIO/Unmined) for Minecraft map rendering
